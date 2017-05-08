@@ -11,10 +11,12 @@ from django.db.models.manager import EmptyManager
 from django.utils import six, timezone
 from django.utils.deprecation import CallableFalse, CallableTrue
 from django.utils.encoding import python_2_unicode_compatible
+from django.utils.translation import get_language
 from django.utils.translation import ugettext_lazy as _
 
 from .validators import ASCIIUsernameValidator, UnicodeUsernameValidator
 
+from klingon.models import Translatable
 
 def update_last_login(sender, user, **kwargs):
     """
@@ -297,13 +299,15 @@ class PermissionsMixin(models.Model):
         return _user_has_module_perms(self, app_label)
 
 
-class AbstractUser(AbstractBaseUser, PermissionsMixin):
+class AbstractUser(AbstractBaseUser, PermissionsMixin, Translatable):
     """
     An abstract base class implementing a fully featured User model with
     admin-compliant permissions.
 
     Username and password are required. Other fields are optional.
     """
+    translatable_fields = ('first_name', 'last_name')
+    
     username_validator = UnicodeUsernameValidator() if six.PY3 else ASCIIUsernameValidator()
 
     username = models.CharField(
@@ -350,6 +354,13 @@ class AbstractUser(AbstractBaseUser, PermissionsMixin):
         """
         full_name = '%s %s' % (self.first_name, self.last_name)
         return full_name.strip()
+    
+    def get_i18n_full_name(self):
+        """
+        Returns the first_name plus the last_name, with a space in between.
+        """
+        full_name = '%s %s' % (self.i18n_first_name(), self.i18n_last_name())
+        return full_name.strip()
 
     def get_short_name(self):
         "Returns the short name for the user."
@@ -360,6 +371,34 @@ class AbstractUser(AbstractBaseUser, PermissionsMixin):
         Sends an email to this User.
         """
         send_mail(subject, message, from_email, [self.email], **kwargs)
+        
+    def i18n_first_name(self):
+        current_lang = get_language()
+        name_i18n = self.get_translation(current_lang, 'first_name')
+        return name_i18n
+        
+    def i18n_first_names(self, lang):
+        name_i18n = self.get_translation(lang, 'first_name')
+        return name_i18n
+    
+    def i18n_last_name(self):
+        current_lang = get_language()
+        name_i18n = self.get_translation(current_lang, 'last_name')
+        return name_i18n
+        
+    def i18n_last_names(self, lang):
+        name_i18n = self.get_translation(lang, 'last_name')
+        return name_i18n
+    
+    def save(self, *args, **kwargs):
+        super(AbstractUser, self).save(*args, **kwargs)
+        current_lang = get_language()
+        if not current_lang:
+            current_lang = 'en'
+            
+        self.set_translation(current_lang, 'first_name', self.first_name)
+        self.set_translation(current_lang, 'last_name', self.last_name)
+        
 
 
 class User(AbstractUser):
